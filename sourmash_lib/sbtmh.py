@@ -3,7 +3,7 @@ from __future__ import division
 
 from io import BytesIO, TextIOWrapper
 
-from .sbt import Leaf, SBT, GraphFactory
+from .sbt import Leaf, SBT, GraphFactory, QFFactory
 from . import signature
 
 
@@ -14,7 +14,8 @@ def load_sbt_index(filename):
 
 def create_sbt_index(bloom_filter_size=1e5, n_children=2):
     "Create an empty SBT index."
-    factory = GraphFactory(1, bloom_filter_size, 4)
+    factory = QFFactory(31, 4096)
+    #factory = GraphFactory(1, bloom_filter_size, 4)
     tree = SBT(factory, d=n_children)
     return tree
 

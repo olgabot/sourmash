@@ -63,6 +63,7 @@ STORAGES = {
     'IPFSStorage': IPFSStorage,
     'RedisStorage': RedisStorage,
 }
+
 NodePos = namedtuple("NodePos", ["pos", "node"])
 
 
@@ -89,6 +90,44 @@ class GraphFactory(object):
 
     def init_args(self):
         return (self.ksize, self.starting_size, self.n_tables)
+
+    @staticmethod
+    def load_data(path):
+        data = khmer.Nodegraph.load(path)
+        return data
+
+
+class QFFactory(object):
+    """Build new Counting Quotient filters of a specific (fixed) size.
+
+    Parameters
+    ----------
+    ksize: int
+        k-mer size.
+    starting_size: int
+        size (in bytes)
+    """
+
+    def __init__(self, ksize, starting_size):
+        self.ksize = ksize
+        self.starting_size = starting_size
+
+    def __call__(self):
+        return khmer.QFCounttable(self.ksize, self.starting_size)
+
+    def init_args(self):
+        return (self.ksize, self.starting_size)
+
+    @staticmethod
+    def load_data(path):
+        data = khmer.QFCounttable.load(path)
+        return data
+
+
+FACTORIES = {
+    'GraphFactory': GraphFactory,
+    'QFFactory': QFFactory,
+}
 
 
 class SBT(object):
@@ -303,7 +342,7 @@ class SBT(object):
         str
             full path to the new SBT description
         """
-        version = 3
+        version = 4
 
         if path.endswith('.sbt.json'):
             path = path[:-9]
@@ -324,7 +363,7 @@ class SBT(object):
             'args': storage.init_args()
         }
         info['factory'] = {
-            'class': GraphFactory.__name__,
+            'class': self.factory.__class__.__name__,
             'args': self.factory.init_args()
         }
 
@@ -390,6 +429,7 @@ class SBT(object):
             1: cls._load_v1,
             2: cls._load_v2,
             3: cls._load_v3,
+            4: cls._load_v4,
         }
 
         # @CTB hack: check to make sure khmer Nodegraph supports the
@@ -519,6 +559,48 @@ class SBT(object):
         tree.max_node = max_node
 
         return tree
+
+
+    @classmethod
+    def _load_v4(cls, info, leaf_loader, dirname, storage):
+        nodes = {int(k): v for (k, v) in info['nodes'].items()}
+
+        if not nodes:
+            raise ValueError("Empty tree!")
+
+        sbt_nodes = defaultdict(lambda: None)
+
+        klass = STORAGES[info['storage']['backend']]
+        if info['storage']['backend'] == "FSStorage":
+            storage = FSStorage(os.path.join(dirname, info['storage']['args']['path']))
+        elif storage is None:
+            storage = klass(**info['storage']['args'])
+
+        klass = FACTORIES[info['factory']['class']]
+        factory = klass(*info['factory']['args'])
+
+        max_node = 0
+        for k, node in nodes.items():
+            if node is None:
+                continue
+
+            if 'internal' in node['name']:
+                node['factory'] = factory
+                sbt_node = Node.load(node, storage)
+            else:
+                sbt_node = leaf_loader(node, storage)
+
+            sbt_nodes[k] = sbt_node
+            max_node = max(max_node, k)
+
+        tree = cls(factory, d=info['d'], storage=storage)
+        tree.nodes = sbt_nodes
+        tree.missing_nodes = {i for i in range(max_node)
+                                if i not in sbt_nodes}
+        tree.max_node = max_node
+
+        return tree
+
 
     def print_dot(self):
         print("""
@@ -652,7 +734,7 @@ class Node(object):
                 with NamedTemporaryFile(suffix=".gz") as f:
                     f.write(data)
                     f.file.flush()
-                    self._data = khmer.load_nodegraph(f.name)
+                    self._data = self._factory.load_data(f.name)
         return self._data
 
     @data.setter
@@ -703,7 +785,8 @@ class Leaf(object):
             with NamedTemporaryFile(suffix=".gz") as f:
                 f.write(data)
                 f.file.flush()
-                self._data = khmer.load_nodegraph(f.name)
+                self._data = khmer.QFCounttable(31, 8)
+                self._data.load(self._filename)
         return self._data
 
     @data.setter

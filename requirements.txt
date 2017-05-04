@@ -4,7 +4,7 @@ numpy
 matplotlib
 scipy
 Cython
-khmer
+https://github.com/dib-lab/khmer/archive/master.zip
 sphinx
 alabaster
 recommonmark
