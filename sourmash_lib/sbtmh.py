@@ -1,6 +1,7 @@
 from __future__ import print_function
 from __future__ import division
 
+import collections
 from io import BytesIO, TextIOWrapper
 
 from .sbt import Leaf, SBT, GraphFactory
@@ -12,9 +13,9 @@ def load_sbt_index(filename):
     return SBT.load(filename, leaf_loader=SigLeaf.load)
 
 
-def create_sbt_index(bloom_filter_size=1e5, n_children=2):
+def create_sbt_index(bloom_filter_size=1e5, n_children=2, ksize=1):
     "Create an empty SBT index."
-    factory = GraphFactory(1, bloom_filter_size, 4)
+    factory = GraphFactory(ksize, bloom_filter_size, 4)
     tree = SBT(factory, d=n_children)
     return tree
 
@@ -47,15 +48,25 @@ class SigLeaf(Leaf):
 
         buf = BytesIO()
         with TextIOWrapper(buf) as out:
-            signature.save_signatures([self.data], out)
+            sigs = self.data
+            if not isinstance(self.data, collections.Sequence):
+                sigs = [self.data]
+
+            signature.save_signatures(sigs, out)
             out.flush()
             return self.storage.save(path, buf.getvalue())
 
     def update(self, parent):
-        for v in self.data.minhash.get_mins():
+        if isinstance(self.data, collections.Sequence):
+            # TODO: select proper signature
+            minhash = self.data[0].minhash
+        else:
+            minhash = self.data.minhash
+
+        for v in minhash.get_mins():
             parent.data.count(v)
         max_n_below = parent.metadata.get('max_n_below', 0)
-        max_n_below = max(len(self.data.minhash.get_mins()),
+        max_n_below = max(len(minhash.get_mins()),
                           max_n_below)
         parent.metadata['max_n_below'] = max_n_below
 
@@ -65,7 +76,7 @@ class SigLeaf(Leaf):
             buf = BytesIO(self.storage.load(self._path))
             with TextIOWrapper(buf) as data:
                 from sourmash_lib import signature
-                self._data = signature.load_one_signature(data)
+                self._data = list(signature.load_signatures(data))
         return self._data
 
     @data.setter
@@ -73,16 +84,25 @@ class SigLeaf(Leaf):
         self._data = new_data
 
 
+def select_signature(node, sig):
+    if isinstance(node.data, collections.Sequence):
+        # TODO: select proper signature
+        query = next(q for q in node.data if q.minhash.ksize == sig.minhash.ksize)
+        return query
+    return node.data
+
+
 def search_minhashes(node, sig, threshold, results=None, downsample=True):
     mins = sig.minhash.get_mins()
 
     if isinstance(node, SigLeaf):
+        to_query = select_signature(node, sig).minhash
         try:
-            matches = node.data.minhash.count_common(sig.minhash)
+            matches = to_query.count_common(sig.minhash)
         except Exception as e:
             if 'mismatch in max_hash' in str(e) and downsample:
-                xx = sig.minhash.downsample_max_hash(node.data.minhash)
-                yy = node.data.minhash.downsample_max_hash(sig.minhash)
+                xx = sig.minhash.downsample_max_hash(to_query)
+                yy = to_query.downsample_max_hash(sig.minhash)
 
                 matches = yy.count_common(xx)
             else:
@@ -109,12 +129,13 @@ class SearchMinHashesFindBest(object):
         score = 0
 
         if isinstance(node, SigLeaf):
+            to_query = select_signature(node, sig).minhash
             try:
-                score = node.data.minhash.similarity(sig.minhash)
+                score = to_query.similarity(sig.minhash)
             except Exception as e:
                 if 'mismatch in max_hash' in str(e) and self.downsample:
-                    xx = sig.minhash.downsample_max_hash(node.data.minhash)
-                    yy = node.data.minhash.downsample_max_hash(sig.minhash)
+                    xx = sig.minhash.downsample_max_hash(to_query.minhash)
+                    yy = to_query.minhash.downsample_max_hash(sig.minhash)
 
                     score = yy.similarity(xx)
                 else:
@@ -146,12 +167,13 @@ def search_minhashes_containment(node, sig, threshold,
     mins = sig.minhash.get_mins()
 
     if isinstance(node, SigLeaf):
+        to_query = select_signature(node, sig).minhash
         try:
-            matches = node.data.minhash.count_common(sig.minhash)
+            matches = to_query.count_common(sig.minhash)
         except Exception as e:
             if 'mismatch in max_hash' in str(e) and downsample:
-                xx = sig.minhash.downsample_max_hash(node.data.minhash)
-                yy = node.data.minhash.downsample_max_hash(sig.minhash)
+                xx = sig.minhash.downsample_max_hash(to_query)
+                yy = to_query.downsample_max_hash(sig.minhash)
 
                 matches = yy.count_common(xx)
             else:
@@ -176,9 +198,10 @@ class SearchMinHashesFindBestIgnoreMaxHash(object):
         mins = sig.minhash.get_mins()
 
         if isinstance(node, SigLeaf):
-            max_scaled = max(node.data.minhash.scaled, sig.minhash.scaled)
+            to_query = select_signature(node, sig).minhash
+            max_scaled = max(to_query.scaled, sig.minhash.scaled)
 
-            mh1 = node.data.minhash.downsample_scaled(max_scaled)
+            mh1 = to_query.downsample_scaled(max_scaled)
             mh2 = sig.minhash.downsample_scaled(max_scaled)
             matches = mh1.count_common(mh2)
         else:  # Node or Leaf, Nodegraph by minhash comparison

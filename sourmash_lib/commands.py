@@ -12,9 +12,10 @@ import screed
 import sourmash_lib
 from . import signature as sig
 from . import sourmash_args
+from .sbtmh import select_signature
 from .logging import notify, error, print_results, set_quiet
 
-from .sourmash_args import DEFAULT_LOAD_K
+from .sourmash_args import DEFAULT_LOAD_K, get_ksize
 DEFAULT_COMPUTE_K = '21,31,51'
 
 DEFAULT_N = 500
@@ -610,9 +611,13 @@ def index(args):
 
     if args.append:
         tree = sourmash_lib.load_sbt_index(args.sbt_name)
-    else:
+    elif args.ksize:
         tree = sourmash_lib.create_sbt_index(args.bf_size,
-                                             n_children=args.n_children)
+                                             n_children=args.n_children,
+                                             ksize=args.ksize)
+    else:
+        # Delay tree creation until we find what is the ksize
+        tree = None
 
     if args.traverse_directory:
         inp_files = list(sourmash_args.traverse_find_sigs(args.signatures))
@@ -637,6 +642,10 @@ def index(args):
             moltypes.add(sourmash_args.get_moltype(ss))
 
             leaf = sourmash_lib.sbtmh.SigLeaf(ss.md5sum(), ss)
+            if tree is None:
+                tree = sourmash_lib.create_sbt_index(args.bf_size,
+                                                    n_children=args.n_children,
+                                                    ksize=ss.minhash.ksize)
             tree.add_node(leaf)
             n += 1
 
@@ -813,8 +822,9 @@ def categorize(args):
         search_fn = sourmash_lib.sbtmh.SearchMinHashesFindBest().search
 
         for leaf in tree.find(search_fn, query, args.threshold):
-            if leaf.data.md5sum() != query.md5sum(): # ignore self.
-                results.append((query.similarity(leaf.data), leaf.data))
+            to_query = select_signature(leaf, query)
+            if to_query.md5sum() != query.md5sum(): # ignore self.
+                results.append((query.similarity(to_query), to_query))
 
         best_hit_sim = 0.0
         best_hit_query_name = ""
@@ -1027,12 +1037,6 @@ def watch(args):
 
     tree = sourmash_lib.load_sbt_index(args.sbt_name)
 
-    def get_ksize(tree):
-        """Walk nodes in `tree` to find out ksize"""
-        for node in tree.nodes.values():
-            if isinstance(node, sourmash_lib.sbtmh.SigLeaf):
-                return node.data.minhash.ksize
-
     # deduce ksize from the SBT we are loading
     ksize = args.ksize
     if ksize is None:
@@ -1051,8 +1055,8 @@ def watch(args):
 
         results = []
         for leaf in tree.find(search_fn, streamsig, args.threshold):
-            results.append((streamsig.similarity(leaf.data),
-                            leaf.data))
+            data = select_signature(leaf, streamsig)
+            results.append((streamsig.similarity(data), data))
 
         return results
 

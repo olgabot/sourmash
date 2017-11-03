@@ -1,13 +1,14 @@
 """
 Utility functions for dealing with input args to the sourmash command line.
 """
+import collections
 import sys
 import os
 from . import signature
 from .logging import notify, error
 
 from . import signature as sig
-from sourmash_lib.sbt import SBT
+from sourmash_lib.sbt import SBT, Node
 from sourmash_lib.sbtmh import SigLeaf
 
 DEFAULT_LOAD_K=31
@@ -155,9 +156,20 @@ def traverse_find_sigs(dirnames):
 
 def get_ksize(tree):
     """Walk nodes in `tree` to find out ksize"""
+    ksizes = set()
     for node in tree.nodes.values():
-        if isinstance(node, SigLeaf):
-            return node.data.minhash.ksize
+        if isinstance(node, Node):
+            return node.data.ksize()
+        elif isinstance(node, SigLeaf):
+            if isinstance(node.data, collections.Sequence):
+                ksizes |= {q.minhash.ksize for q in node.data}
+            else:
+                ksizes |= node.data.minhash.ksize
+
+    if len(ksizes) == 1:
+        return ksizes.pop()
+
+    return ksizes
 
 
 def load_sbts_and_sigs(filenames, query_ksize, query_moltype, traverse=False):

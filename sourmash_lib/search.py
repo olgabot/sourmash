@@ -3,7 +3,8 @@ from collections import namedtuple
 import sourmash_lib
 from .signature import SourmashSignature
 from .sbtmh import (search_minhashes,
-                                search_minhashes_containment)
+                    search_minhashes_containment,
+                    select_signature)
 from .sbtmh import SearchMinHashesFindBest
 
 # generic SearchResult across individual signatures + SBTs.
@@ -27,14 +28,15 @@ def search_databases(query, databases, threshold, do_containment, best_only):
 
             tree = sbt_or_siglist
             for leaf in tree.find(search_fn, query, threshold):
-                similarity = query_match(leaf.data)
+                to_query = select_signature(leaf, query)
+                similarity = query_match(to_query)
                 if similarity >= threshold and \
-                       leaf.data.md5sum() not in found_md5:
+                       to_query.md5sum() not in found_md5:
                     sr = SearchResult(similarity=similarity,
-                                      match_sig=leaf.data,
-                                      md5=leaf.data.md5sum(),
+                                      match_sig=to_query,
+                                      md5=to_query.md5sum(),
                                       filename=filename,
-                                      name=leaf.data.name())
+                                      name=to_query.name())
                     found_md5.add(sr.md5)
                     results.append(sr)
 
@@ -77,10 +79,11 @@ def gather_databases(query, databases, threshold_bp):
                 tree = sbt_or_siglist
 
                 for leaf in tree.find(search_fn, query, 0.0):
-                    leaf_e = leaf.data.minhash
+                    to_query = select_signature(leaf, query)
+                    leaf_e = to_query.minhash
                     similarity = query.minhash.similarity_ignore_maxhash(leaf_e)
                     if similarity > 0.0:
-                        results.append((similarity, leaf.data))
+                        results.append((similarity, to_query))
             else:
                 for ss in sbt_or_siglist:
                     similarity = query.minhash.similarity_ignore_maxhash(ss.minhash)
