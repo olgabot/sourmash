@@ -785,8 +785,7 @@ class Leaf(object):
             with NamedTemporaryFile(suffix=".gz") as f:
                 f.write(data)
                 f.file.flush()
-                self._data = khmer.QFCounttable(31, 8)
-                self._data.load(self._filename)
+                self._data = khmer.load_nodegraph(f.name)
         return self._data
 
     @data.setter

@@ -5,12 +5,17 @@ import os
 import pytest
 
 from sourmash_lib import signature
-from sourmash_lib.sbt import SBT, GraphFactory, Leaf, Node
+from sourmash_lib.sbt import SBT, GraphFactory, QFFactory, Leaf, Node
 from sourmash_lib.sbtmh import SigLeaf, search_minhashes
 from sourmash_lib.sbt_storage import (FSStorage, TarStorage,
                                       RedisStorage, IPFSStorage)
 
 from . import sourmash_tst_utils as utils
+
+
+@pytest.fixture(params=[GraphFactory(31, 1e5, 4), QFFactory(31, 2**12)])
+def factory(request):
+    return request.param
 
 
 def test_simple(n_children):
@@ -167,8 +172,7 @@ def test_tree_v2_load():
     assert len(results_v2) == 4
 
 
-def test_tree_save_load(n_children):
-    factory = GraphFactory(31, 1e5, 4)
+def test_tree_save_load(n_children, factory):
     tree = SBT(factory, d=n_children)
 
     for f in utils.SIG_FILES:
@@ -197,8 +201,7 @@ def test_tree_save_load(n_children):
         assert old_result == new_result
 
 
-def test_binary_nary_tree():
-    factory = GraphFactory(31, 1e5, 4)
+def test_binary_nary_tree(factory):
     trees = {}
     trees[2] = SBT(factory)
     trees[5] = SBT(factory, d=5)
@@ -226,8 +229,7 @@ def test_binary_nary_tree():
     assert results[5] == results[10]
 
 
-def test_sbt_combine(n_children):
-    factory = GraphFactory(31, 1e5, 4)
+def test_sbt_combine(n_children, factory):
     tree = SBT(factory, d=n_children)
     tree_1 = SBT(factory, d=n_children)
     tree_2 = SBT(factory, d=n_children)
@@ -275,8 +277,7 @@ def test_sbt_combine(n_children):
     assert tree_1.max_node == next_empty
 
 
-def test_sbt_fsstorage():
-    factory = GraphFactory(31, 1e5, 4)
+def test_sbt_fsstorage(factory):
     with utils.TempDirectory() as location:
         tree = SBT(factory)
 
@@ -308,8 +309,7 @@ def test_sbt_fsstorage():
         assert os.path.exists(os.path.join(location, '.fstree'))
 
 
-def test_sbt_tarstorage():
-    factory = GraphFactory(31, 1e5, 4)
+def test_sbt_tarstorage(factory):
     with utils.TempDirectory() as location:
         tree = SBT(factory)
 
@@ -342,10 +342,9 @@ def test_sbt_tarstorage():
             assert old_result == new_result
 
 
-def test_sbt_ipfsstorage():
+def test_sbt_ipfsstorage(factory):
     ipfsapi = pytest.importorskip('ipfsapi')
 
-    factory = GraphFactory(31, 1e5, 4)
     with utils.TempDirectory() as location:
         tree = SBT(factory)
 
@@ -381,9 +380,8 @@ def test_sbt_ipfsstorage():
             assert old_result == new_result
 
 
-def test_sbt_redisstorage():
+def test_sbt_redisstorage(factory):
     redis = pytest.importorskip('redis')
-    factory = GraphFactory(31, 1e5, 4)
     with utils.TempDirectory() as location:
         tree = SBT(factory)
 
@@ -458,8 +456,7 @@ def test_tree_repair_add_node():
             assert all(c.node is None for c in tree_repair.children(pos))
 
 
-def test_save_sparseness(n_children):
-    factory = GraphFactory(31, 1e5, 4)
+def test_save_sparseness(n_children, factory):
     tree = SBT(factory, d=n_children)
 
     for f in utils.SIG_FILES:
