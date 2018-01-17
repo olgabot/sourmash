@@ -4,7 +4,7 @@ numpy
 matplotlib
 scipy
 Cython
-https://github.com/dib-lab/khmer/archive/master.zip
+git+https://github.com/dib-lab/khmer.git@feature/cqf_update_from
 sphinx
 alabaster
 recommonmark
