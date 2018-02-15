@@ -73,29 +73,31 @@ class SigLeaf(Leaf):
         self._data = new_data
 
 
-def search_minhashes(node, sig, threshold, results=None, downsample=True):
-    mins = sig.minhash.get_mins()
+def search_minhashes(node, query, threshold, results=None, downsample=True):
     score = 0
 
     if isinstance(node, SigLeaf):
         try:
-            score = node.data.minhash.similarity(sig.minhash)
+            score = node.data.minhash.similarity(query.minhash)
         except Exception as e:
             if 'mismatch in max_hash' in str(e) and downsample:
-                xx = sig.minhash.downsample_max_hash(node.data.minhash)
-                yy = node.data.minhash.downsample_max_hash(sig.minhash)
+                xx = query.minhash.downsample_max_hash(node.data.minhash)
+                yy = node.data.minhash.downsample_max_hash(query.minhash)
 
                 score = yy.similarity(xx)
             else:
                 raise
 
     else:  # Node or Leaf, Nodegraph by minhash comparison
-        if len(mins):
-            matches = sum(1 for value in mins if node.data.get(value))
-            max_mins = node.metadata.get('max_n_below', -1)
-            if max_mins == -1:
-                raise Exception('cannot do similarity search on this SBT; need to rebuild.')
-            score = float(matches) / max_mins
+        try:
+            query_bf = query.bf
+        except AttributeError:
+            query_bf = node._factory()
+            for v in query.minhash.get_mins():
+                query_bf.count(v)
+            query.bf = query_bf
+
+        score = node.data.similarity(query_bf)
 
     if results is not None:
         results[node.name] = score

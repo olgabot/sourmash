@@ -678,7 +678,7 @@ class Node(object):
                 with NamedTemporaryFile(suffix=".gz") as f:
                     f.write(data)
                     f.file.flush()
-                    self._data = khmer.load_nodegraph(f.name)
+                    self._data = khmer.Nodegraph.load(f.name)
         return self._data
 
     @data.setter
@@ -729,7 +729,7 @@ class Leaf(object):
             with NamedTemporaryFile(suffix=".gz") as f:
                 f.write(data)
                 f.file.flush()
-                self._data = khmer.load_nodegraph(f.name)
+                self._data = khmer.Nodegraph.load(f.name)
         return self._data
 
     @data.setter
