@@ -1,6 +1,6 @@
 from __future__ import print_function
 import sys
-from setuptools import setup
+from setuptools import setup, find_packages
 from setuptools import Extension
 import os
 
@@ -52,6 +52,8 @@ SETUP_METADATA = \
     "author_email": "titus@idyll.org",
     "license": "BSD 3-clause",
     "packages": ["sourmash_lib"],
+    "packages": find_packages(exclude=['tests', 'benchmarks']),
+    "zip_safe": False,
     "entry_points": {'console_scripts': [
         'sourmash = sourmash_lib.__main__:main'
         ]
@@ -72,6 +74,7 @@ SETUP_METADATA = \
         'demo' : ['jupyter', 'jupyter_client', 'ipython'],
         'doc' : ['sphinx'],
         },
+    "package_data": {'sourmash_lib': ['VERSION']},
     "include_package_data": True,
     "package_data": {
         "sourmash_lib": ['*.pxd']
