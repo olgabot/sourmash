@@ -41,11 +41,11 @@ import pickle
 
 import pytest
 
-from sourmash_lib._minhash import (MinHash, hash_murmur, dotproduct,
-                                   get_scaled_for_max_hash,
-                                   get_max_hash_for_scaled)
+from sourmash.minhash import (MinHash, hash_murmur, dotproduct,
+                              get_scaled_for_max_hash,
+                              get_max_hash_for_scaled)
 from . import sourmash_tst_utils as utils
-from sourmash_lib import signature
+from sourmash import signature
 
 # add:
 # * get default params from Python
@@ -68,6 +68,7 @@ def test_basic_dna(track_abundance):
     print(a, b)
     assert a == b
     assert len(b) == 1
+    assert a[0] == b[0] == 12415348535738636339
 
 
 def test_bytes_dna(track_abundance):

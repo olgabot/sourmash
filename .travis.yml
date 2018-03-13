@@ -37,6 +37,9 @@ matrix:
         - TOX_ENV=py36
 
 install:
+- curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
+- export PATH="$HOME/.cargo/bin:$PATH"
+- rustc -V
 - pip install tox
 - sudo apt-get --yes install snapd
 - sudo snap install ipfs
