@@ -270,27 +270,30 @@ class MinHash(RustObject):
 
         return a
 
-    def intersection(self, other):
+    def intersection(self, other, in_common=False):
+        if not isinstance(other, MinHash):
+            raise TypeError("Must be a MinHash!")
+
         if self.num != other.num:
             err = 'must have same num: {} != {}'.format(self.num, other.num)
             raise TypeError(err)
+
+        if in_common:
+            # TODO: copy from buffer to Python land instead,
+            # this way involves more moving data around.
+            combined_mh = self.copy_and_clear()
+            combined_mh.merge(self)
+            combined_mh.merge(other)
+
+            size = len(combined_mh)
+            common = set(self.get_mins())
+            common.intersection_update(other.get_mins())
+            common.intersection_update(combined_mh.get_mins())
         else:
-            num = self.num
+            size = self._methodcall(lib.kmerminhash_intersection, other._get_objptr())
+            common = set()
 
-        combined_mh = MinHash(num, self.ksize,
-                              is_protein=self.is_protein,
-                              seed=self.seed,
-                              max_hash=self.max_hash,
-                              track_abundance=self.track_abundance)
-
-        combined_mh.merge(self)
-        combined_mh.merge(other)
-
-        common = set(self.get_mins())
-        common.intersection_update(other.get_mins())
-        common.intersection_update(combined_mh.get_mins())
-
-        return common, max(len(combined_mh), 1)
+        return common, max(size, 1)
 
     def compare(self, other):
         if self.num != other.num:

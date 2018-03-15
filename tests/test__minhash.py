@@ -274,38 +274,38 @@ def test_intersection_1(track_abundance):
     common = set(a.get_mins())
     combined_size = 3
 
-    intersection, size = a.intersection(b)
+    intersection, size = a.intersection(b, in_common=True)
     assert intersection == common
     assert combined_size == size
 
-    intersection, size = b.intersection(b)
+    intersection, size = b.intersection(b, in_common=True)
     assert intersection == common
     assert combined_size == size
 
-    intersection, size = b.intersection(a)
+    intersection, size = b.intersection(a, in_common=True)
     assert intersection == common
     assert combined_size == size
 
-    intersection, size = a.intersection(a)
+    intersection, size = a.intersection(a, in_common=True)
     assert intersection == common
     assert combined_size == size
 
     # add same sequence again
     b.add_sequence('TGCCGCCCAGCA')
 
-    intersection, size = a.intersection(b)
+    intersection, size = a.intersection(b, in_common=True)
     assert intersection == common
     assert combined_size == size
 
-    intersection, size = b.intersection(b)
+    intersection, size = b.intersection(b, in_common=True)
     assert intersection == common
     assert combined_size == size
 
-    intersection, size = b.intersection(a)
+    intersection, size = b.intersection(a, in_common=True)
     assert intersection == common
     assert combined_size == size
 
-    intersection, size = a.intersection(a)
+    intersection, size = a.intersection(a, in_common=True)
     assert intersection == common
     assert combined_size == size
 
@@ -315,18 +315,18 @@ def test_intersection_1(track_abundance):
     new_in_common = set(a.get_mins()).intersection(set(b.get_mins()))
     new_combined_size = 8
 
-    intersection, size = a.intersection(b)
+    intersection, size = a.intersection(b, in_common=True)
     assert intersection == new_in_common
     assert size == new_combined_size
 
-    intersection, size = b.intersection(a)
+    intersection, size = b.intersection(a, in_common=True)
     assert intersection == new_in_common
     assert size == new_combined_size
 
-    intersection, size = a.intersection(a)
+    intersection, size = a.intersection(a, in_common=True)
     assert intersection == set(a.get_mins())
 
-    intersection, size = b.intersection(b)
+    intersection, size = b.intersection(b, in_common=True)
     assert intersection == set(b.get_mins())
 
 

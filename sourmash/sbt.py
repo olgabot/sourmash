@@ -534,8 +534,7 @@ class SBT(object):
                 parent = self.parent(i)
                 if parent.pos not in self.missing_nodes:
                     max_n_below = parent.node.metadata.get('max_n_below', 0)
-                    max_n_below = max(len(n.data.minhash.get_mins()),
-                                      max_n_below)
+                    max_n_below = max(len(n.data.minhash), max_n_below)
                     parent.node.metadata['max_n_below'] = max_n_below
 
                     current = parent
