@@ -164,12 +164,15 @@ class MinHash(RustObject):
 
     def add_many(self, hashes):
         "Add many hashes in at once."
-        for hash in hashes:
-            self.add_hash(hash)
+        if isinstance(hashes, MinHash):
+            self._methodcall(lib.kmerminhash_add_from, hashes._objptr)
+        else:
+            for hash in hashes:
+                self._methodcall(lib.kmerminhash_add_hash, hash)
 
     def update(self, other):
         "Update this estimator from all the hashes from the other."
-        self.add_many(other.get_mins())
+        self.add_many(other)
 
     def __len__(self):
         return self._methodcall(lib.kmerminhash_get_mins_size)
@@ -235,7 +238,7 @@ class MinHash(RustObject):
         if self.track_abundance:
             a.set_abundances(self.get_mins(with_abundance=True))
         else:
-            a.add_many(self.get_mins())
+            a.add_many(self)
 
         return a
 
@@ -266,7 +269,7 @@ class MinHash(RustObject):
         if self.track_abundance:
             a.set_abundances(self.get_mins(with_abundance=True))
         else:
-            a.add_many(self.get_mins())
+            a.add_many(self)
 
         return a
 
