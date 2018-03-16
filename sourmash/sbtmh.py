@@ -55,8 +55,7 @@ class SigLeaf(Leaf):
         for v in self.data.minhash.get_mins():
             parent.data.count(v)
         max_n_below = parent.metadata.get('max_n_below', 0)
-        max_n_below = max(len(self.data.minhash.get_mins()),
-                          max_n_below)
+        max_n_below = max(len(self.data.minhash), max_n_below)
         parent.metadata['max_n_below'] = max_n_below
 
     @property
