@@ -115,18 +115,19 @@ class SBT(object):
 
     def __init__(self, factory, d=2, storage=None):
         self.factory = factory
-        self.nodes = defaultdict(lambda: None)
+        self.nodes = {}
         self.missing_nodes = set()
         self.d = d
         self.next_node = 0
         self.storage = storage
+        self.is_ready = False
 
     def new_node_pos(self, node):
         while self.nodes.get(self.next_node, None) is not None:
             self.next_node += 1
         return self.next_node
 
-    def add_node(self, node):
+    def add_node(self, node, update_internal=True):
         pos = self.new_node_pos(node)
 
         if pos == 0:  # empty tree; initialize w/node.
@@ -154,26 +155,45 @@ class SBT(object):
             self.nodes[c1.pos] = p.node
             self.nodes[c2.pos] = node
 
-            for child in (p.node, node):
-                child.update(n)
+            if update_internal:
+                for child in (p.node, node):
+                    child.update(n)
+            else:
+               self.is_ready = False
         elif isinstance(p.node, Node):
             self.nodes[pos] = node
-            node.update(p.node)
+            if update_internal:
+                node.update(p.node)
+            else:
+               self.is_ready = False
         elif p.node is None:
             n = Node(self.factory, name="internal." + str(p.pos))
             self.nodes[p.pos] = n
             c1 = self.children(p.pos)[0]
             self.nodes[c1.pos] = node
-            node.update(n)
+            if update_internal:
+                node.update(n)
+            else:
+               self.is_ready = False
 
-        # update all parents!
-        p = self.parent(p.pos)
-        while p:
-            self._rebuild_node(p.pos)
-            node.update(self.nodes[p.pos])
+        if update_internal:
+            # update all parents!
             p = self.parent(p.pos)
+            while p:
+                self._rebuild_node(p.pos)
+                node.update(self.nodes[p.pos])
+                p = self.parent(p.pos)
+        else:
+           self.is_ready = False
+
+    def _fill_internal(self):
+        # TODO
+        self.is_ready = True
 
     def find(self, search_fn, *args, **kwargs):
+        if not self.is_ready:
+            self._fill_internal()
+
         matches = []
         visited, queue = set(), [0]
         while queue:
@@ -332,6 +352,9 @@ class SBT(object):
             'class': GraphFactory.__name__,
             'args': self.factory.init_args()
         }
+
+        if not self.is_ready:
+            self._fill_internal()
 
         structure = {}
         total_nodes = len(self.nodes)
@@ -548,6 +571,8 @@ class SBT(object):
                         current = parent
                         parent = self.parent(parent.pos)
 
+    def _fill_up(self, fn):
+        pass
 
     def print_dot(self):
         print("""
