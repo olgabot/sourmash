@@ -43,7 +43,7 @@ then define a search function, ::
 
 from __future__ import print_function, unicode_literals, division
 
-from collections import namedtuple, Mapping, defaultdict
+from collections import namedtuple, Mapping
 from copy import copy
 import json
 import math
@@ -95,7 +95,7 @@ class SBT(object):
     """A Sequence Bloom Tree implementation allowing generic internal nodes and leaves.
 
     The default node and leaf format is a Bloom Filter (like the original implementation),
-    but we also provide a MinHash leaf class (in the sourmash.sbtmh.Leaf
+    but we also provide a MinHash leaf class (in the sourmash.sbtmh.SigLeaf class)
 
     Parameters
     ----------
@@ -103,37 +103,60 @@ class SBT(object):
         Callable for generating new datastores for internal nodes.
     d: int
         Number of children for each internal node. Defaults to 2 (a binary tree)
-    n_tables: int
-        number of nodegraph tables to be used.
-
+    storage: Storage, default: None
+        A Storage is any place where we can save and load data for the nodes.
+        If set to None, will use a FSStorage.
 
     Notes
     -----
-    We use a defaultdict to store the tree structure. Nodes are numbered
-    specific node they are numbered
+    We use two dicts to store the tree structure: One for the internal nodes,
+    and another for the leaves. 
     """
 
     def __init__(self, factory, d=2, storage=None):
         self.factory = factory
         self.nodes = {}
         self.missing_nodes = set()
+        self._leaves = {}
         self.d = d
         self.next_node = 0
         self.storage = storage
         self.is_ready = False
 
     def new_node_pos(self, node):
-        while self.nodes.get(self.next_node, None) is not None:
-            self.next_node += 1
+        if not self.nodes:
+            self.next_node = 1
+            return 0
+
+        if not self._leaves:
+            self.next_node = 2
+            return 1
+
+        min_leaf = min(self._leaves.keys())
+
+        next_internal_node = None
+        if self.next_node <= min_leaf:
+            for i in range(min_leaf):
+                if all((self.nodes.get(i, None) is None,
+                        self._leaves.get(i, None) is None,
+                        i not in self.missing_nodes)):
+                    next_internal_node = i
+                    break
+
+        if next_internal_node is None:
+            self.next_node = max(self._leaves.keys()) + 1
+        else:
+            self.next_node = next_internal_node
+
         return self.next_node
 
-    def add_node(self, node, update_internal=True):
-        pos = self.new_node_pos(node)
+    def add_node(self, leaf, update_internal=True):
+        pos = self.new_node_pos(leaf)
 
         if pos == 0:  # empty tree; initialize w/node.
             n = Node(self.factory, name="internal." + str(pos))
             self.nodes[0] = n
-            pos = self.new_node_pos(node)
+            pos = self.new_node_pos(leaf)
 
         # Cases:
         # 1) parent is a Leaf (already covered)
@@ -152,27 +175,28 @@ class SBT(object):
 
             c1, c2 = self.children(p.pos)[:2]
 
-            self.nodes[c1.pos] = p.node
-            self.nodes[c2.pos] = node
+            self._leaves[c1.pos] = p.node
+            self._leaves[c2.pos] = leaf
+            del self._leaves[p.pos]
 
             if update_internal:
-                for child in (p.node, node):
+                for child in (p.node, leaf):
                     child.update(n)
             else:
                self.is_ready = False
         elif isinstance(p.node, Node):
-            self.nodes[pos] = node
+            self._leaves[pos] = leaf
             if update_internal:
-                node.update(p.node)
+                leaf.update(p.node)
             else:
                self.is_ready = False
         elif p.node is None:
             n = Node(self.factory, name="internal." + str(p.pos))
             self.nodes[p.pos] = n
             c1 = self.children(p.pos)[0]
-            self.nodes[c1.pos] = node
+            self._leaves[c1.pos] = leaf
             if update_internal:
-                node.update(n)
+                leaf.update(n)
             else:
                self.is_ready = False
 
@@ -181,7 +205,7 @@ class SBT(object):
             p = self.parent(p.pos)
             while p:
                 self._rebuild_node(p.pos)
-                node.update(self.nodes[p.pos])
+                leaf.update(self.nodes[p.pos])
                 p = self.parent(p.pos)
         else:
            self.is_ready = False
@@ -198,7 +222,10 @@ class SBT(object):
         visited, queue = set(), [0]
         while queue:
             node_p = queue.pop(0)
-            node_g = self.nodes.get(node_p, None)
+            node_g = self._leaves.get(node_p, None)
+            if node_g is None:
+                node_g = self.nodes.get(node_p, None)
+
             if node_g is None:
                 if node_p in self.missing_nodes:
                     self._rebuild_node(node_p)
@@ -239,10 +266,12 @@ class SBT(object):
         self.nodes[pos] = node
         for c in self.children(pos):
             if c.pos in self.missing_nodes or isinstance(c.node, Leaf):
+                cnode = c.node
                 if c.node is None:
                     self._rebuild_node(c.pos)
-                self.nodes[c.pos].update(node)
-        self.missing_nodes.remove(pos)
+                    cnode = self.nodes[c.pos]
+                cnode.update(node)
+        #self.missing_nodes.remove(pos)
 
 
     def parent(self, pos):
@@ -264,6 +293,9 @@ class SBT(object):
         if pos == 0:
             return None
         p = int(math.floor((pos - 1) / self.d))
+        if p in self._leaves:
+            return NodePos(p, self._leaves[p])
+
         node = self.nodes.get(p, None)
         return NodePos(p, node)
 
@@ -302,6 +334,9 @@ class SBT(object):
             child node.
         """
         cd = self.d * parent + pos + 1
+        if cd in self._leaves:
+            return NodePos(cd, self._leaves[cd])
+
         node = self.nodes.get(cd, None)
         return NodePos(cd, node)
 
@@ -325,7 +360,7 @@ class SBT(object):
         str
             full path to the new SBT description
         """
-        version = 3
+        version = 4
 
         if path.endswith('.sbt.json'):
             path = path[:-9]
@@ -356,8 +391,9 @@ class SBT(object):
         if not self.is_ready:
             self._fill_internal()
 
-        structure = {}
-        total_nodes = len(self.nodes)
+        nodes = {}
+        leaves = {}
+        total_nodes = len(self.nodes) + len(self._leaves)
         for n, (i, node) in enumerate(self):
             if node is None:
                 continue
@@ -379,12 +415,16 @@ class SBT(object):
             node.storage = storage
 
             data['filename'] = node.save(data['filename'])
-            structure[i] = data
+            if isinstance(node, Node):
+                nodes[i] = data
+            else:
+                leaves[i] = data
 
             notify("{} of {} nodes saved".format(n+1, total_nodes), end='\r')
 
         notify("\nFinished saving nodes, now saving SBT json file.")
-        info['nodes'] = structure
+        info['nodes'] = nodes
+        info['leaves'] = leaves
         with open(fn, 'w') as fp:
             json.dump(info, fp)
 
@@ -418,6 +458,7 @@ class SBT(object):
             1: cls._load_v1,
             2: cls._load_v2,
             3: cls._load_v3,
+            4: cls._load_v4,
         }
 
         # @CTB hack: check to make sure khmer Nodegraph supports the
@@ -452,7 +493,7 @@ class SBT(object):
         if jnodes[0] is None:
             raise ValueError("Empty tree!")
 
-        sbt_nodes = defaultdict(lambda: None)
+        sbt_nodes = {}
 
         sample_bf = os.path.join(dirname, jnodes[0]['filename'])
         ksize, tablesize, ntables = khmer.extract_nodegraph_info(sample_bf)[:3]
@@ -484,7 +525,8 @@ class SBT(object):
         if nodes[0] is None:
             raise ValueError("Empty tree!")
 
-        sbt_nodes = defaultdict(lambda: None)
+        sbt_nodes = {}
+        sbt_leaves = {}
 
         sample_bf = os.path.join(dirname, nodes[0]['filename'])
         k, size, ntables = khmer.extract_nodegraph_info(sample_bf)[:3]
@@ -499,13 +541,14 @@ class SBT(object):
             if 'internal' in node['name']:
                 node['factory'] = factory
                 sbt_node = Node.load(node, storage)
+                sbt_nodes[k] = sbt_node
             else:
                 sbt_node = leaf_loader(node, storage)
-
-            sbt_nodes[k] = sbt_node
+                sbt_leaves[k] = sbt_node
 
         tree = cls(factory, d=info['d'])
         tree.nodes = sbt_nodes
+        tree._leaves = sbt_leaves
 
         return tree
 
@@ -516,7 +559,8 @@ class SBT(object):
         if not nodes:
             raise ValueError("Empty tree!")
 
-        sbt_nodes = defaultdict(lambda: None)
+        sbt_nodes = {}
+        sbt_leaves = {}
 
         klass = STORAGES[info['storage']['backend']]
         if info['storage']['backend'] == "FSStorage":
@@ -534,45 +578,90 @@ class SBT(object):
             if 'internal' in node['name']:
                 node['factory'] = factory
                 sbt_node = Node.load(node, storage)
+                sbt_nodes[k] = sbt_node
             else:
                 sbt_node = leaf_loader(node, storage)
+                sbt_leaves[k] = sbt_node
 
-            sbt_nodes[k] = sbt_node
             max_node = max(max_node, k)
 
         tree = cls(factory, d=info['d'], storage=storage)
         tree.nodes = sbt_nodes
+        tree._leaves = sbt_leaves
         tree.missing_nodes = {i for i in range(max_node)
-                                if i not in sbt_nodes}
-        # TODO: this might not be true with combine...
-        tree.next_node = max_node
+                              if i not in sbt_nodes and i not in sbt_leaves}
+
+        tree._fill_max_n_below()
+
+        return tree
+
+    @classmethod
+    def _load_v4(cls, info, leaf_loader, dirname, storage):
+        nodes = {int(k): v for (k, v) in info['nodes'].items()}
+        leaves = {int(k): v for (k, v) in info['leaves'].items()}
+
+        if not leaves:
+            raise ValueError("Empty tree!")
+
+        sbt_nodes = {}
+        sbt_leaves = {}
+
+        klass = STORAGES[info['storage']['backend']]
+        if info['storage']['backend'] == "FSStorage":
+            storage = FSStorage(dirname, info['storage']['args']['path'])
+        elif storage is None:
+            storage = klass(**info['storage']['args'])
+
+        factory = GraphFactory(*info['factory']['args'])
+
+        max_node = 0
+        for k, node in nodes.items():
+            node['factory'] = factory
+            sbt_node = Node.load(node, storage)
+
+            sbt_nodes[k] = sbt_node
+            max_node = max(max_node, k)
+
+        for k, node in leaves.items():
+            sbt_leaf = leaf_loader(node, storage)
+            sbt_leaves[k] = sbt_leaf
+            max_node = max(max_node, k)
+
+        tree = cls(factory, d=info['d'], storage=storage)
+        tree.nodes = sbt_nodes
+        tree._leaves = sbt_leaves
+        tree.missing_nodes = {i for i in range(max_node)
+                              if i not in sbt_nodes and i not in sbt_leaves}
 
         tree._fill_max_n_below()
 
         return tree
 
     def _fill_max_n_below(self):
-        for i, n in self.nodes.items():
-            if isinstance(n, Leaf):
-                parent = self.parent(i)
-                if parent.pos not in self.missing_nodes:
+        for i, n in self.leaves(with_pos=True):
+            parent = self.parent(i)
+            if parent.pos not in self.missing_nodes:
+                max_n_below = parent.node.metadata.get('max_n_below', 0)
+                max_n_below = max(len(n.data.minhash.get_mins()),
+                                  max_n_below)
+                parent.node.metadata['max_n_below'] = max_n_below
+
+                current = parent
+                parent = self.parent(parent.pos)
+                while parent and parent.pos not in self.missing_nodes:
                     max_n_below = parent.node.metadata.get('max_n_below', 0)
-                    max_n_below = max(len(n.data.minhash.get_mins()),
+                    max_n_below = max(current.node.metadata['max_n_below'],
                                       max_n_below)
                     parent.node.metadata['max_n_below'] = max_n_below
-
                     current = parent
                     parent = self.parent(parent.pos)
-                    while parent and parent.pos not in self.missing_nodes:
-                        max_n_below = parent.node.metadata.get('max_n_below', 0)
-                        max_n_below = max(current.node.metadata['max_n_below'],
-                                          max_n_below)
-                        parent.node.metadata['max_n_below'] = max_n_below
-                        current = parent
-                        parent = self.parent(parent.pos)
 
     def _fill_up(self, fn):
         pass
+
+    def __len__(self):
+        internal_nodes = set(self.nodes).union(self.missing_nodes)
+        return len(internal_nodes) + len(self._leaves)
 
     def print_dot(self):
         print("""
@@ -609,6 +698,8 @@ class SBT(object):
     def __iter__(self):
         for i, node in self.nodes.items():
             yield (i, node)
+        for i, node in self._leaves.items():
+            yield (i, node)
 
     def _parents(self, pos=0):
         if pos == 0:
@@ -619,17 +710,12 @@ class SBT(object):
                 yield p.pos
                 p = self.parent(p.pos)
 
-
-    def _leaves(self, pos=0):
-        for i, node in self:
-            if isinstance(node, Leaf):
-                if pos in self._parents(i):
-                    yield (i, node)
-
-    def leaves(self):
-        for c in self.nodes.values():
-            if isinstance(c, Leaf):
-                yield c
+    def leaves(self, with_pos=False):
+        for pos, data in self._leaves.items():
+            if with_pos:
+                yield (pos, data)
+            else:
+                yield data
 
     def combine(self, other):
         larger, smaller = self, other
@@ -639,10 +725,12 @@ class SBT(object):
         n = Node(self.factory, name="internal.0", storage=self.storage)
         larger.nodes[0].update(n)
         smaller.nodes[0].update(n)
-        new_nodes = defaultdict(lambda: None)
+        new_nodes = {}
         new_nodes[0] = n
 
-        levels = int(math.ceil(math.log(len(larger.nodes), self.d))) + 1
+        new_leaves = {}
+
+        levels = int(math.ceil(math.log(len(larger), self.d))) + 1
         current_pos = 1
         n_previous = 0
         n_next = 1
@@ -651,21 +739,19 @@ class SBT(object):
                 for pos in range(n_previous, n_next):
                     if tree.nodes.get(pos, None) is not None:
                         new_node = copy(tree.nodes[pos])
-                        if isinstance(new_node, Node):
-                            # An internal node, we need to update the name
-                            new_node.name = "internal.{}".format(current_pos)
+                        new_node.name = "internal.{}".format(current_pos)
                         new_nodes[current_pos] = new_node
+                    elif tree._leaves.get(pos, None) is not None:
+                        new_node = copy(tree._leaves[pos])
+                        new_leaves[current_pos] = new_node
                     current_pos += 1
             n_previous = n_next
             n_next = n_previous + int(self.d ** level)
             current_pos = n_next
 
-        # reset next_node, next time we add a node it will find the next
-        # empty position
-        self.next_node = 2
-
         # TODO: do we want to return a new tree, or merge into this one?
         self.nodes = new_nodes
+        self._leaves = new_leaves
         return self
 
 
