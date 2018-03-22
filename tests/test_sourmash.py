@@ -3113,12 +3113,7 @@ def test_storage_convert():
 
         assert len(original) == len(ipfs)
         assert all(n1[1].name == n2[1].name
-                   for (n1, n2) in zip(sorted(original.nodes.items()),
-                                       sorted(ipfs.nodes.items())))
-
-        assert all(n1[1].name == n2[1].name
-                   for (n1, n2) in zip(sorted(original._leaves.items()),
-                                       sorted(ipfs._leaves.items())))
+                   for (n1, n2) in zip(sorted(original), sorted(ipfs)))
 
         args = ['storage', 'convert',
                 '-b', """'TarStorage("{}")'""".format(
@@ -3130,11 +3125,8 @@ def test_storage_convert():
 
         assert len(original) == len(tar)
         assert all(n1[1].name == n2[1].name
-                   for (n1, n2) in zip(sorted(original.nodes.items()),
-                                       sorted(tar.nodes.items())))
-        assert all(n1[1].name == n2[1].name
-                   for (n1, n2) in zip(sorted(original._leaves.items()),
-                                       sorted(tar._leaves.items())))
+                   for (n1, n2) in zip(sorted(original), sorted(tar)))
+
 
 def test_storage_convert_identity():
     with utils.TempDirectory() as location:
@@ -3154,11 +3146,7 @@ def test_storage_convert_identity():
 
         assert len(original) == len(identity)
         assert all(n1[1].name == n2[1].name
-                   for (n1, n2) in zip(sorted(original.nodes.items()),
-                                       sorted(identity.nodes.items())))
-        assert all(n1[1].name == n2[1].name
-                   for (n1, n2) in zip(sorted(original._leaves.items()),
-                                       sorted(identity._leaves.items())))
+                   for (n1, n2) in zip(sorted(original), sorted(identity)))
 
 
 def test_storage_convert_fsstorage_newpath():
@@ -3181,11 +3169,7 @@ def test_storage_convert_fsstorage_newpath():
 
         assert len(original) == len(identity)
         assert all(n1[1].name == n2[1].name
-                   for (n1, n2) in zip(sorted(original.nodes.items()),
-                                       sorted(identity.nodes.items())))
-        assert all(n1[1].name == n2[1].name
-                   for (n1, n2) in zip(sorted(original._leaves.items()),
-                                       sorted(identity._leaves.items())))
+                   for (n1, n2) in zip(sorted(original), sorted(identity)))
 
 
 def test_license_cc0():
