@@ -680,7 +680,7 @@ def index(args):
             scaleds.add(ss.minhash.scaled)
 
             leaf = SigLeaf(ss.md5sum(), ss)
-            tree.add_node(leaf)
+            tree.add_node(leaf, update_internal=False)
             n += 1
 
         if not ss:
@@ -710,6 +710,7 @@ def index(args):
         sys.exit(-1)
 
     notify('loaded {} sigs; saving SBT under "{}"', n, args.sbt_name)
+    tree._fill_internal()
     tree.save(args.sbt_name, sparseness=args.sparseness)
 
 
