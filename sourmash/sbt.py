@@ -210,10 +210,6 @@ class SBT(object):
         else:
            self.is_ready = False
 
-    def _fill_internal(self):
-        # TODO
-        self.is_ready = True
-
     def find(self, search_fn, *args, **kwargs):
         if not self.is_ready:
             self._fill_internal()
@@ -632,31 +628,69 @@ class SBT(object):
         tree._missing_nodes = {i for i in range(max_node)
                               if i not in sbt_nodes and i not in sbt_leaves}
 
-        tree._fill_max_n_below()
-
         return tree
 
     def _fill_max_n_below(self):
-        for i, n in self.leaves(with_pos=True):
-            parent = self.parent(i)
-            if parent.pos not in self._missing_nodes:
-                max_n_below = parent.node.metadata.get('max_n_below', 0)
-                max_n_below = max(len(n.data.minhash.get_mins()),
-                                  max_n_below)
-                parent.node.metadata['max_n_below'] = max_n_below
+        def fill_max_n_below(node, *args, **kwargs):
+            original_max_n_below = node.metadata.get('max_n_below', 0)
+            max_n_below = original_max_n_below
 
-                current = parent
-                parent = self.parent(parent.pos)
-                while parent and parent.pos not in self._missing_nodes:
-                    max_n_below = parent.node.metadata.get('max_n_below', 0)
-                    max_n_below = max(current.node.metadata['max_n_below'],
-                                      max_n_below)
-                    parent.node.metadata['max_n_below'] = max_n_below
-                    current = parent
-                    parent = self.parent(parent.pos)
+            children = kwargs['children']
+            for child in children:
+                if child.node is not None:
+                    if isinstance(child.node, Leaf):
+                        max_n_below = max(len(child.node.data.minhash), max_n_below)
+                    else:
+                        child_n = child.node.metadata.get('max_n_below', 0)
+                        max_n_below = max(child_n, max_n_below)
 
-    def _fill_up(self, fn):
-        pass
+            return original_max_n_below == max_n_below
+
+        self._fill_up(fill_max_n_below)
+
+    def _fill_internal(self):
+
+        def fill_nodegraphs(node, *args, **kwargs):
+            children = kwargs['children']
+            for child in children:
+                if child.node is not None:
+                    child.node.update(node)
+            return True
+
+        self._fill_up(fill_nodegraphs)
+        self.is_ready = True
+
+    def _fill_up(self, search_fn, *args, **kwargs):
+        visited, queue = set(), list(reversed(list(self._leaves.keys())))
+        while queue:
+            node_p = queue.pop(0)
+
+            parent = self.parent(node_p)
+            if parent is None:
+                # we are in the root, no more nodes available to search
+                assert len(queue) == 0
+                return
+
+            if parent.node is None:
+                if parent.pos in self._missing_nodes:
+                    self._rebuild_node(parent.pos)
+                    parent = self.parent(node_p)
+                else:
+                    continue
+
+            siblings = self.children(parent.pos)
+
+            if node_p not in visited:
+                visited.add(node_p)
+                for sibling in siblings:
+                    visited.add(sibling.pos)
+                    try:
+                        queue.remove(sibling.pos)
+                    except ValueError:
+                        pass
+
+                if search_fn(parent.node, children=siblings, *args):
+                    queue.append(parent.pos)
 
     def __len__(self):
         internal_nodes = set(self._nodes).union(self._missing_nodes)
@@ -809,9 +843,10 @@ class Node(object):
 
     def update(self, parent):
         parent.data.update(self.data)
-        max_n_below = max(parent.metadata.get('max_n_below', 0),
-                          self.metadata.get('max_n_below'))
-        parent.metadata['max_n_below'] = max_n_below
+        if 'max_n_below' in self.metadata:
+            max_n_below = max(parent.metadata.get('max_n_below', 0),
+                              self.metadata.get('max_n_below'))
+            parent.metadata['max_n_below'] = max_n_below
 
 
 class Leaf(object):
