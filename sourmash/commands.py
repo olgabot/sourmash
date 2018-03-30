@@ -710,7 +710,6 @@ def index(args):
         sys.exit(-1)
 
     notify('loaded {} sigs; saving SBT under "{}"', n, args.sbt_name)
-    tree._fill_internal()
     tree.save(args.sbt_name, sparseness=args.sparseness)
 
 

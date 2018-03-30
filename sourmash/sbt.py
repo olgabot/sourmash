@@ -388,7 +388,7 @@ class SBT(object):
 
         nodes = {}
         leaves = {}
-        total_nodes = len(self._nodes) + len(self._leaves)
+        total_nodes = len(self)
         for n, (i, node) in enumerate(self):
             if node is None:
                 continue
@@ -661,7 +661,7 @@ class SBT(object):
         self.is_ready = True
 
     def _fill_up(self, search_fn, *args, **kwargs):
-        visited, queue = set(), list(reversed(list(self._leaves.keys())))
+        visited, queue = set(), list(reversed(sorted(self._leaves.keys())))
         while queue:
             node_p = queue.pop(0)
 
@@ -706,7 +706,7 @@ class SBT(object):
         edge [arrowsize=0.8];
         """)
 
-        for i, node in list(self._nodes.items()):
+        for i, node in self._nodes.items():
             if isinstance(node, Node):
                 print('"{}" [shape=box fillcolor=gray style=filled]'.format(
                       node.name))
