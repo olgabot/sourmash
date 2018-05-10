@@ -30,4 +30,7 @@ coverage: all
 benchmark: all
 	asv continuous master
 
+last-tag:
+	git fetch -p -q; git tag -l | sort -V | tail -1
+
 FORCE:
