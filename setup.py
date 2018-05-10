@@ -4,11 +4,6 @@ from setuptools import setup, find_packages
 from setuptools import Extension
 import os
 
-# retrieve VERSION from sourmash/VERSION.
-thisdir = os.path.dirname(__file__)
-version_file = open(os.path.join(thisdir, 'sourmash', 'VERSION'))
-VERSION = version_file.read().strip()
-
 EXTRA_COMPILE_ARGS = ['-std=c++11', '-pedantic']
 EXTRA_LINK_ARGS=[]
 
@@ -45,7 +40,6 @@ else:                                     # ...likely Linux
 SETUP_METADATA = \
                {
     "name": "sourmash",
-    "version": VERSION,
     "description": "tools for comparing DNA sequences with MinHash sketches",
     "url": "https://github.com/dib-lab/sourmash",
     "author": "C. Titus Brown",
@@ -66,7 +60,8 @@ SETUP_METADATA = \
                                extra_compile_args=EXTRA_COMPILE_ARGS,
                                extra_link_args=EXTRA_LINK_ARGS)],
     "install_requires": ["screed>=0.9", "ijson", "khmer>=2.1<3.0"],
-    "setup_requires": ['Cython>=0.25.2', "setuptools>=18.0"],
+    "setup_requires": ['Cython>=0.25.2', "setuptools>=18.0", 'setuptools_scm'],
+    "use_scm_version": True,
     "extras_require": {
         'test' : ['pytest', 'pytest-cov', 'numpy', 'matplotlib', 'scipy'],
         'demo' : ['jupyter', 'jupyter_client', 'ipython'],
